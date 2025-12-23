@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
           });
         } else {
           // Token refresh failed
+          console.error('Token refresh failed for event ID:', eventId);
           return Response.json(
             { error: 'Unable to refresh access token' },
             { status: 401 }

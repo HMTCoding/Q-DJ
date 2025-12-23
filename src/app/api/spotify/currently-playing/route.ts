@@ -114,6 +114,7 @@ export async function GET(request: NextRequest) {
           });
         } else {
           // Token refresh failed
+          console.error('Token refresh failed for event ID:', eventId);
           return Response.json({ error: 'Failed to refresh access token', message: 'Unable to refresh Spotify access token' }, { status: 401 });
         }
       } else {

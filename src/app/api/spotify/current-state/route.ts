@@ -134,6 +134,7 @@ export async function GET(request: NextRequest) {
         }
       } else {
         // Token refresh failed
+        console.error('Token refresh failed for event ID:', eventId);
         return Response.json({ error: 'Failed to refresh access token for currently playing', message: 'Unable to refresh Spotify access token' }, { status: 401 });
       }
     } else if (currentlyPlayingResponse.status === 404) {
@@ -201,6 +202,7 @@ export async function GET(request: NextRequest) {
           }
         } else {
           // Token refresh failed
+          console.error('Token refresh failed for event ID:', eventId);
           queueError = 'Failed to refresh access token for queue';
         }
       }

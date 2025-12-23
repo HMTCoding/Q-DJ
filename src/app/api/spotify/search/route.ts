@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
           return Response.json({ tracks });
         } else {
           // Token refresh failed
+          console.error('Token refresh failed for event ID:', eventId);
           return Response.json(
             { error: 'Unable to refresh access token' },
             { status: 401 }

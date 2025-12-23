@@ -33,6 +33,12 @@ export async function createEvent(name: string): Promise<CreateEventResult> {
     // Get the user's ID from the session
     const userId = session.user.id;
     
+    // Log token information for debugging
+    console.log("Saving following tokens to Supabase:", { 
+      access: !!session.accessToken, 
+      refresh: !!session.refreshToken 
+    });
+    
     if (!userId) {
       return {
         success: false,

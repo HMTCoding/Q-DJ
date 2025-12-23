@@ -43,6 +43,8 @@ export const authOptions = {
             "user-read-email",
             "user-read-private",
           ].join(" "),
+          access_type: "offline",
+          prompt: "consent",
         },
       },
     }),
