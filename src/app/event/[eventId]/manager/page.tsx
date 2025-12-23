@@ -23,7 +23,7 @@ export default function ManagerView() {
   const [error, setError] = useState<string | null>(null);
   const [event, setEvent] = useState<any>(null);
   const [isCopied, setIsCopied] = useState(false);
-  const [audioElements, setAudioElements] = useState<Record<string, HTMLAudioElement>>({});
+
   const [queue, setQueue] = useState<SpotifyTrack[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -31,43 +31,9 @@ export default function ManagerView() {
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const queuePollingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize audio elements for soundboard
-  useEffect(() => {
-    const sounds = [
-      { name: "airhorn", file: "/sounds/airhorn.mp3" },
-      { name: "applause", file: "/sounds/applause.mp3" },
-      { name: "drumroll", file: "/sounds/drumroll.mp3" },
-      { name: "cheer", file: "/sounds/cheer.mp3" },
-      { name: "laugh", file: "/sounds/laugh.mp3" },
-      { name: "whistle", file: "/sounds/whistle.mp3" },
-    ];
 
-    const newAudioElements: Record<string, HTMLAudioElement> = {};
-    sounds.forEach(sound => {
-      const audio = new Audio(sound.file);
-      audio.preload = 'auto';
-      newAudioElements[sound.name] = audio;
-    });
 
-    setAudioElements(newAudioElements);
 
-    return () => {
-      // Clean up audio elements
-      Object.values(newAudioElements).forEach(audio => {
-        audio.pause();
-        audio.src = '';
-      });
-    };
-  }, []);
-
-  // Play sound effect
-  const playSound = (soundName: string) => {
-    const audio = audioElements[soundName];
-    if (audio) {
-      audio.currentTime = 0;
-      audio.play().catch(e => console.error("Error playing sound:", e));
-    }
-  };
 
   // Check if the user is the event manager
   useEffect(() => {
@@ -461,54 +427,96 @@ export default function ManagerView() {
           )}
         </div>
 
-        {/* Soundboard Section */}
-        <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 backdrop-blur-sm mb-8">
-          <h2 className="text-2xl font-bold text-white mb-6">Soundboard</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {[
-              { name: "Lufthorn", file: "airhorn", emoji: "🪹" },
-              { name: "Applaus", file: "applause", emoji: "👏" },
-              { name: "Trommelwirbel", file: "drumroll", emoji: "🥁" },
-              { name: "Jubel", file: "cheer", emoji: "🎉" },
-              { name: "Lachen", file: "laugh", emoji: "😂" },
-              { name: "Pfeifen", file: "whistle", emoji: " whistle" }
-            ].map((sound, index) => (
-              <button
-                key={index}
-                onClick={() => playSound(sound.file)}
-                className="flex flex-col items-center justify-center p-4 bg-gray-700/50 hover:bg-gray-600/70 rounded-lg border border-gray-600 transition"
-              >
-                <span className="text-3xl mb-2">{sound.emoji}</span>
-                <span className="text-white text-sm">{sound.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+
 
         {/* Share Link Section */}
         <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 backdrop-blur-sm">
           <h2 className="text-2xl font-bold text-white mb-4">Share Event</h2>
-          <div className="flex">
-            <input
-              type="text"
-              readOnly
-              value={`${window.location.origin}/event/${eventId}`}
-              className="flex-1 p-3 rounded-l-lg bg-gray-700/50 border border-gray-600 text-white"
-            />
-            <button
-              onClick={copyToClipboard}
-              className={`px-6 rounded-r-lg font-medium transition ${
-                isCopied 
-                  ? 'bg-green-600 text-white' 
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              }`}
-            >
-              {isCopied ? 'Copied!' : 'Copy Link'}
-            </button>
+          <div className="flex flex-col md:flex-row gap-6">
+            <div className="flex-1">
+              <div className="flex">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}/event/${eventId}`}
+                  className="flex-1 p-3 rounded-l-lg bg-gray-700/50 border border-gray-600 text-white"
+                />
+                <button
+                  onClick={copyToClipboard}
+                  className={`px-6 rounded-r-lg font-medium transition ${
+                    isCopied 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                >
+                  {isCopied ? 'Copied!' : 'Copy Link'}
+                </button>
+              </div>
+              <p className="text-gray-400 mt-3">
+                Share this link with your guests so they can request songs
+              </p>
+            </div>
+            
+            {/* QR Code for Event */}
+            <div className="flex flex-col items-center justify-center">
+              <div className="bg-white p-3 rounded-lg">
+                <img 
+                  src={`https://quickchart.io/qr?text=${encodeURIComponent(`${window.location.origin}/event/${eventId}`)}&size=200`}
+                  alt={`QR Code for event ${eventId}`}
+                  className="w-32 h-32"
+                />
+              </div>
+              <p className="text-gray-400 mt-2 text-sm">Scan to join event</p>
+            </div>
           </div>
-          <p className="text-gray-400 mt-3">
-            Share this link with your guests so they can request songs
-          </p>
+        </div>
+        
+        {/* Second Share Link Section */}
+        <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 backdrop-blur-sm mt-8">
+          <h2 className="text-2xl font-bold text-white mb-4">Share Event (TV View)</h2>
+          <div className="flex flex-col md:flex-row gap-6">
+            <div className="flex-1">
+              <div className="flex">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}/event/${eventId}/tv`}
+                  className="flex-1 p-3 rounded-l-lg bg-gray-700/50 border border-gray-600 text-white"
+                />
+                <button
+                  onClick={() => {
+                    const tvUrl = `${window.location.origin}/event/${eventId}/tv`;
+                    navigator.clipboard.writeText(tvUrl).then(() => {
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    });
+                  }}
+                  className={`px-6 rounded-r-lg font-medium transition ${
+                    isCopied 
+                      ? 'bg-green-600 text-white' 
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                >
+                  {isCopied ? 'Copied!' : 'Copy Link'}
+                </button>
+              </div>
+              <p className="text-gray-400 mt-3">
+                Share this TV view link with displays at your event
+              </p>
+            </div>
+            
+            {/* QR Code for TV View */}
+            <div className="flex flex-col items-center justify-center">
+              <div className="bg-white p-3 rounded-lg">
+                <img 
+                  src={`https://quickchart.io/qr?text=${encodeURIComponent(`${window.location.origin}/event/${eventId}/tv`)}&size=200`}
+                  alt={`QR Code for TV view of event ${eventId}`}
+                  className="w-32 h-32"
+                />
+              </div>
+              <p className="text-gray-400 mt-2 text-sm">Scan for TV view</p>
+            </div>
+          </div>
         </div>
       </div>
       

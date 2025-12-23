@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { refreshAndSaveSpotifyToken } from '@/lib/spotify';
+import { refreshAndSaveSpotifyToken, refreshSpotifyToken } from '@/lib/spotify';
 
 export async function GET(request: NextRequest) {
   try {
@@ -100,6 +100,18 @@ export async function GET(request: NextRequest) {
           return Response.json({ queue: queueData.queue?.slice(0, 10) || [] });
         } else {
           // Token refresh failed
+          console.error('Token refresh failed for event ID:', eventId);
+          // Get the error details from the refreshAndSaveSpotifyToken function
+          try {
+            await refreshSpotifyToken(eventData.refresh_token);
+          } catch (refreshError) {
+            console.error('Detailed token refresh error for event ID:', eventId, 'Error:', refreshError instanceof Error ? refreshError.message : refreshError);
+            return Response.json({ 
+              error: 'Failed to refresh access token', 
+              message: 'Unable to refresh Spotify access token',
+              detailed_error: refreshError instanceof Error ? refreshError.message : 'Unknown error during refresh'
+            }, { status: 401 });
+          }
           return Response.json({ 
             error: 'Failed to refresh access token', 
             message: 'Unable to refresh Spotify access token'

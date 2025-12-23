@@ -7,7 +7,7 @@ Q-DJ is a Next.js 14 application with TypeScript and Tailwind CSS that allows DJ
 ```
 Q-DJ/
 ├── public/
-│   ├── sounds/ (placeholder for soundboard audio files)
+
 │   ├── favicon.ico
 │   ├── file.svg
 │   ├── globe.svg
@@ -92,8 +92,7 @@ Q-DJ/
 - **DJ manager view** at `/event/[eventId]/manager` with access control
 - **Now Playing section** with 5-second polling from Spotify API
 - **Live status indicator** showing polling status
-- **Soundboard grid** with 6 sound effect buttons (Lufthorn, Applaus, Trommelwirbel, Jubel, Lachen, Pfeifen)
-- **HTML5 Audio API** implementation for low-latency sound playback
+
 - **Share link functionality** with clipboard copy and success feedback
 
 ### 7. UI/UX Features
@@ -151,4 +150,3 @@ ALTER TABLE events ADD CONSTRAINT events_name_check CHECK (name != '');
 - **NextAuth.js** for authentication
 - **Supabase** for database operations
 - **Spotify Web API** for music integration
-- **HTML5 Audio API** for soundboard functionality

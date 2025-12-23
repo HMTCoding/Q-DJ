@@ -7,6 +7,19 @@ import { supabase } from './supabase';
  */
 export async function refreshSpotifyToken(refreshToken: string): Promise<string | null> {
   try {
+    // Log the first 10 characters of the refresh token for debugging
+    console.log('Refresh token first 10 chars:', refreshToken?.substring(0, 10));
+    
+    // Log the authorization header (masked) for debugging
+    const maskedAuthHeader = `Basic ${Buffer.from(`${process.env.SPOTIFY_CLIENT_ID || 'MISSING'}:${process.env.SPOTIFY_CLIENT_SECRET || 'MISSING'}`).toString('base64')}`;
+    console.log('Authorization header (first 20 chars):', maskedAuthHeader.substring(0, 20) + '...');
+    
+    // Validate environment variables
+    if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+      console.error('Missing required Spotify environment variables: SPOTIFY_CLIENT_ID or SPOTIFY_CLIENT_SECRET');
+      return null;
+    }
+
     const response = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
@@ -44,13 +57,17 @@ export async function refreshSpotifyToken(refreshToken: string): Promise<string 
         status: response.status
       });
 
-      return null;
+      // Return the exact error from Spotify for better debugging
+      throw new Error(`Spotify token refresh failed: ${errorDetails.error_description || errorDetails.error || 'Unknown error'}`);
     }
 
     const refreshData = await response.json();
     return refreshData.access_token;
   } catch (error) {
     console.error('Unexpected error during token refresh:', error);
+    if (error instanceof Error) {
+      throw error; // Re-throw to allow calling functions to handle the specific error
+    }
     return null;
   }
 }
@@ -62,22 +79,30 @@ export async function refreshSpotifyToken(refreshToken: string): Promise<string 
  * @returns The new access token or null if refresh failed
  */
 export async function refreshAndSaveSpotifyToken(eventId: string, refreshToken: string): Promise<string | null> {
-  const newAccessToken = await refreshSpotifyToken(refreshToken);
-  
-  if (newAccessToken) {
-    // Update the access token in the database
-    const { error: updateError } = await supabase
-      .from('events')
-      .update({ access_token: newAccessToken })
-      .eq('id', eventId);
-              
-    if (updateError) {
-      console.error('Error updating access token in database:', updateError);
-      return null;
-    } else {
-      console.log('Successfully updated access token in database for event ID:', eventId);
+  try {
+    const newAccessToken = await refreshSpotifyToken(refreshToken);
+    
+    if (newAccessToken) {
+      // Update the access token in the database
+      const { error: updateError } = await supabase
+        .from('events')
+        .update({ access_token: newAccessToken })
+        .eq('id', eventId);
+                
+      if (updateError) {
+        console.error('Error updating access token in database:', updateError);
+        return null;
+      } else {
+        console.log('Successfully updated access token in database for event ID:', eventId);
+      }
     }
+    
+    return newAccessToken;
+  } catch (error) {
+    console.error('Error during token refresh process:', error);
+    if (error instanceof Error) {
+      console.error('Detailed error message:', error.message);
+    }
+    return null;
   }
-  
-  return newAccessToken;
 }

@@ -83,6 +83,18 @@ export default function TvView() {
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/50 via-blue-900/30 to-indigo-900/50" />
       </div>
       
+      {/* QR Code for joining event */}
+      <div className="absolute top-8 right-8 z-20">
+        <div className="bg-white p-4 rounded-lg shadow-2xl">
+          <img 
+            src={`https://quickchart.io/qr?text=${encodeURIComponent(`${window.location.origin}/event/${eventId}`)}&size=250`}
+            alt={`QR Code to join event ${eventId}`}
+            className="w-40 h-40"
+          />
+        </div>
+        <p className="text-white text-center mt-2 text-sm bg-black/50 px-2 py-1 rounded">Scan to join</p>
+      </div>
+      
       {/* Main content */}
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-8 text-white">
         {/* Now Playing Section */}
