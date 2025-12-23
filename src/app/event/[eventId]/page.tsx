@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import Footer from "@/components/Footer";
 
 interface Event {
   id: string;
@@ -21,15 +22,25 @@ interface SpotifyTrack {
   uri?: string;
 }
 
-export default function EventPage({ params }: { params: Promise<{ eventId: string }> }) {
+export default function EventPage({
+  params,
+}: {
+  params: Promise<{ eventId: string }>;
+}) {
   const { eventId } = use(params);
   const [event, setEvent] = useState<Event | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SpotifyTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [addingToQueue, setAddingToQueue] = useState<Record<string, boolean>>({});
-  const [toast, setToast] = useState<{show: boolean, message: string, type: 'success' | 'error'}>({show: false, message: '', type: 'success'});
+  const [addingToQueue, setAddingToQueue] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [toast, setToast] = useState<{
+    show: boolean;
+    message: string;
+    type: "success" | "error";
+  }>({ show: false, message: "", type: "success" });
   const [queue, setQueue] = useState<SpotifyTrack[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [queueError, setQueueError] = useState<string | null>(null);
@@ -40,10 +51,10 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
     const fetchEvent = async () => {
       try {
         const { data, error } = await supabase
-          .from('events')
-          .select('*')
-          .eq('id', eventId)
-          .eq('is_active', true)
+          .from("events")
+          .select("*")
+          .eq("id", eventId)
+          .eq("is_active", true)
           .single();
 
         if (error) {
@@ -67,28 +78,28 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
       if (searchQuery.trim() && event) {
         setLoading(true);
         setError(null);
-        
+
         try {
-          const response = await fetch('/api/spotify/search', {
-            method: 'POST',
+          const response = await fetch("/api/spotify/search", {
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
             body: JSON.stringify({
               query: searchQuery.trim(),
-              eventId: eventId
+              eventId: eventId,
             }),
           });
 
           const data = await response.json();
-          
+
           if (!response.ok) {
-            throw new Error(data.error || 'Search failed');
+            throw new Error(data.error || "Search failed");
           }
-          
+
           setSearchResults(data.tracks || []);
         } catch (err: any) {
-          setError(err.message || 'Error searching for tracks');
+          setError(err.message || "Error searching for tracks");
           setSearchResults([]);
         } finally {
           setLoading(false);
@@ -106,78 +117,78 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
   // Function to add a track to the queue
   const addToQueue = async (track: SpotifyTrack) => {
     if (!event) return;
-    
-    setAddingToQueue(prev => ({ ...prev, [track.id]: true }));
-    
+
+    setAddingToQueue((prev) => ({ ...prev, [track.id]: true }));
+
     try {
-      const response = await fetch('/api/spotify/queue', {
-        method: 'POST',
+      const response = await fetch("/api/spotify/queue", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           uri: `spotify:track:${track.id}`,
-          eventId: eventId
+          eventId: eventId,
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
         setToast({
           show: true,
-          message: 'Track added to queue successfully!',
-          type: 'success'
+          message: "Track added to queue successfully!",
+          type: "success",
         });
-        
+
         // Auto-hide toast after 3 seconds and refresh queue
         setTimeout(() => {
-          setToast(prev => ({ ...prev, show: false }));
+          setToast((prev) => ({ ...prev, show: false }));
           fetchQueue(); // Refresh the queue after successful addition
         }, 3000);
       } else {
         setToast({
           show: true,
-          message: data.error || 'Failed to add track to queue',
-          type: 'error'
+          message: data.error || "Failed to add track to queue",
+          type: "error",
         });
-        
+
         // Auto-hide toast after 3 seconds
         setTimeout(() => {
-          setToast(prev => ({ ...prev, show: false }));
+          setToast((prev) => ({ ...prev, show: false }));
         }, 3000);
       }
     } catch (err) {
       setToast({
         show: true,
-        message: 'An error occurred while adding the track',
-        type: 'error'
+        message: "An error occurred while adding the track",
+        type: "error",
       });
-      
+
       // Auto-hide toast after 3 seconds
       setTimeout(() => {
-        setToast(prev => ({ ...prev, show: false }));
+        setToast((prev) => ({ ...prev, show: false }));
       }, 3000);
     } finally {
-      setAddingToQueue(prev => ({ ...prev, [track.id]: false }));
+      setAddingToQueue((prev) => ({ ...prev, [track.id]: false }));
     }
   };
 
   // Function to fetch the current queue
   const fetchQueue = async () => {
     if (!eventId) return;
-    
+
     setQueueLoading(true);
     setQueueError(null);
-    
+
     try {
       const response = await fetch(`/api/spotify/get-queue?eventId=${eventId}`);
       const data = await response.json();
-      
+
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch queue');
+        throw new Error(data.error || "Failed to fetch queue");
       }
-      
+
       setQueue(data.queue || []);
       // If there's a message (like 'DJ is currently offline'), set it as an error
       if (data.message) {
@@ -186,7 +197,7 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
         setQueueError(null); // Clear any previous error
       }
     } catch (err: any) {
-      setQueueError(err.message || 'Error fetching queue');
+      setQueueError(err.message || "Error fetching queue");
       setQueue([]); // Clear queue on error
     } finally {
       setQueueLoading(false);
@@ -208,7 +219,9 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
           <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent">
             {event ? event.name : "Event"}
           </h1>
-          <p className="text-gray-400">Search and request songs for this event</p>
+          <p className="text-gray-400">
+            Search and request songs for this event
+          </p>
         </header>
 
         {/* Search Section */}
@@ -242,11 +255,13 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
           {/* Search Results */}
           {!loading && searchResults.length > 0 && (
             <div className="mt-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Search Results</h2>
+              <h2 className="text-xl font-semibold text-white mb-4">
+                Search Results
+              </h2>
               <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
                 {searchResults.map((track) => (
-                  <div 
-                    key={track.id} 
+                  <div
+                    key={track.id}
                     className="flex items-center p-3 bg-gray-700/30 rounded-lg border border-gray-600 hover:bg-gray-700/50 transition"
                   >
                     {track.album.images[0] && (
@@ -257,25 +272,45 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-medium truncate">{track.name}</h3>
+                      <h3 className="text-white font-medium truncate">
+                        {track.name}
+                      </h3>
                       <p className="text-gray-400 text-sm truncate">
-                        {track.artists.map(artist => artist.name).join(', ')}
+                        {track.artists.map((artist) => artist.name).join(", ")}
                       </p>
                     </div>
-                    <button 
+                    <button
                       onClick={() => addToQueue(track)}
                       disabled={addingToQueue[track.id]}
                       className="ml-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition disabled:opacity-50 flex items-center"
                     >
                       {addingToQueue[track.id] ? (
                         <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          <svg
+                            className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
                           </svg>
                           Adding...
                         </>
-                      ) : 'Add to Queue'}
+                      ) : (
+                        "Add to Queue"
+                      )}
                     </button>
                   </div>
                 ))}
@@ -305,8 +340,19 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
                   onClick={fetchQueue}
                   className="flex items-center text-gray-400 hover:text-white text-sm transition"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
                   </svg>
                   Refresh
                 </button>
@@ -326,15 +372,19 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
 
           {queue.length === 0 && !queueLoading && (
             <div className="text-center py-8 text-gray-500">
-              {queueError && queueError.includes('offline') ? (
+              {queueError && queueError.includes("offline") ? (
                 <>
                   <p className="text-red-400">DJ ist gerade offline</p>
-                  <p className="text-sm mt-1">The DJ is currently not connected to Spotify</p>
+                  <p className="text-sm mt-1">
+                    The DJ is currently not connected to Spotify
+                  </p>
                 </>
               ) : (
                 <>
                   <p>No tracks in queue</p>
-                  <p className="text-sm mt-1">The DJ hasn't added any tracks yet</p>
+                  <p className="text-sm mt-1">
+                    The DJ hasn't added any tracks yet
+                  </p>
                 </>
               )}
             </div>
@@ -355,12 +405,16 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
                     />
                   )}
                   <div className="flex-1 min-w-0 ml-2">
-                    <h3 className="text-white font-medium truncate">{track.name}</h3>
+                    <h3 className="text-white font-medium truncate">
+                      {track.name}
+                    </h3>
                     <p className="text-gray-400 text-sm truncate">
-                      {track.artists.map(artist => artist.name).join(', ')}
+                      {track.artists.map((artist) => artist.name).join(", ")}
                     </p>
                   </div>
-                  <span className="text-gray-500 text-sm font-medium mr-3">#{index + 1}</span>
+                  <span className="text-gray-500 text-sm font-medium mr-3">
+                    #{index + 1}
+                  </span>
                 </div>
               ))}
             </div>
@@ -370,33 +424,58 @@ export default function EventPage({ params }: { params: Promise<{ eventId: strin
         {/* Event Info */}
         <div className="text-center text-gray-500 text-sm">
           <p>Event ID: {eventId}</p>
-          <p className="mt-2">Share this link with guests to let them search for songs</p>
+          <p className="mt-2">
+            Share this link with guests to let them search for songs
+          </p>
         </div>
       </div>
-      
+
       {/* Toast Notification */}
       {toast.show && (
-        <div 
+        <div
           className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white max-w-xs z-50 transition-opacity duration-300 ${
-            toast.type === 'success' 
-              ? 'bg-green-600 border border-green-500' 
-              : 'bg-red-600 border border-red-500'
+            toast.type === "success"
+              ? "bg-green-600 border border-green-500"
+              : "bg-red-600 border border-red-500"
           }`}
         >
           <div className="flex items-center">
-            {toast.type === 'success' ? (
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+            {toast.type === "success" ? (
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                ></path>
               </svg>
             ) : (
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                ></path>
               </svg>
             )}
             <span>{toast.message}</span>
           </div>
         </div>
       )}
+      <Footer />
     </div>
   );
 }
