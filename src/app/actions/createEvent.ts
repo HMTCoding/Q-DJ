@@ -3,13 +3,18 @@
 import { supabase } from "@/lib/supabase";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { refreshAndSaveSpotifyToken } from "@/lib/spotify";
 
 export interface Event {
   id: string;
   created_at: string;
   name: string;
   manager_id: string;
+  access_token: string | null;
+  refresh_token: string | null;
   is_active: boolean;
+  mode: 'queue' | 'playlist';
+  spotify_playlist_id: string | null;
 }
 
 export interface CreateEventResult {
@@ -18,7 +23,57 @@ export interface CreateEventResult {
   event?: Event;
 }
 
-export async function createEvent(name: string): Promise<CreateEventResult> {
+// Helper function to create a Spotify playlist
+async function createSpotifyPlaylist(accessToken: string, eventName: string): Promise<string | null> {
+  try {
+    // First, get the user ID from Spotify
+    const userResponse = await fetch('https://api.spotify.com/v1/me', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+    
+    if (!userResponse.ok) {
+      const errorData = await userResponse.json().catch(() => ({}));
+      console.error('Error fetching Spotify user ID:', errorData);
+      return null;
+    }
+    
+    const userData = await userResponse.json();
+    const userId = userData.id;
+    
+    console.log('Successfully retrieved Spotify user ID:', userId);
+    
+    // Now create the playlist using the user ID
+    const playlistResponse = await fetch(`https://api.spotify.com/v1/users/${userId}/playlists`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: `${eventName} [Q-DJ]`,
+        description: `Playlist for Q-DJ event: ${eventName}`,
+        public: false,
+      }),
+    });
+
+    if (!playlistResponse.ok) {
+      const errorData = await playlistResponse.json().catch(() => ({}));
+      console.error('Error creating Spotify playlist:', errorData);
+      console.error('Full error response body:', JSON.stringify(errorData, null, 2));
+      return null;
+    }
+
+    const playlistData = await playlistResponse.json();
+    return playlistData.id;
+  } catch (error) {
+    console.error('Unexpected error creating Spotify playlist:', error);
+    return null;
+  }
+}
+
+export async function createEvent(name: string, mode: 'queue' | 'playlist' = 'queue'): Promise<CreateEventResult> {
   try {
     // Get the current session
     const session = await getServerSession(authOptions);
@@ -68,6 +123,20 @@ export async function createEvent(name: string): Promise<CreateEventResult> {
       };
     }
 
+    let playlistId: string | null = null;
+    
+    // If mode is playlist, create a new Spotify playlist
+    if (mode === 'playlist' && session.accessToken) {
+      playlistId = await createSpotifyPlaylist(session.accessToken, name);
+      
+      if (!playlistId) {
+        return {
+          success: false,
+          error: "Failed to create Spotify playlist. Please try again."
+        };
+      }
+    }
+
     // Create the new event
     const { data, error } = await supabase
       .from('events')
@@ -76,7 +145,9 @@ export async function createEvent(name: string): Promise<CreateEventResult> {
         manager_id: userId,
         access_token: session.accessToken,
         refresh_token: session.refreshToken,
-        is_active: true
+        is_active: true,
+        mode,
+        spotify_playlist_id: playlistId
       }])
       .select()
       .single();

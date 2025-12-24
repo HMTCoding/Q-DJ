@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    // Fetch event data to get manager's access token
+    // Fetch event data to get manager's access token and mode
     const { data: eventData, error: eventError } = await supabase
       .from('events')
-      .select('access_token, refresh_token')
+      .select('access_token, refresh_token, mode')
       .eq('id', eventId)
       .single();
 
@@ -28,6 +28,14 @@ export async function GET(request: NextRequest) {
     
     console.log('Found event in Supabase for ID:', eventId);
 
+    // Check if the event is in queue mode (this API should not be used for playlist mode)
+    if (eventData.mode === 'playlist') {
+      return Response.json({ 
+        error: 'This API endpoint is not valid for playlist mode events',
+        message: 'Use the playlist tracks API instead'
+      }, { status: 400 });
+    }
+    
     let accessToken = eventData.access_token;
 
     // Log before making Spotify API call
@@ -161,7 +169,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Return only the next 10 tracks to save data
-    return Response.json({ queue: queueData.queue?.slice(0, 10) || [] });
+    return Response.json({ queue: queueData.queue?.slice(0, 10) || [], mode: eventData.mode });
   } catch (error) {
     console.error('Error fetching queue:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

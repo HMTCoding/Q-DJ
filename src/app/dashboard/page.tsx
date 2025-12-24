@@ -15,12 +15,17 @@ interface Event {
   name: string;
   manager_id: string;
   is_active: boolean;
+  mode: "queue" | "playlist";
+  spotify_playlist_id: string | null;
 }
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const [events, setEvents] = useState<Event[]>([]);
   const [newEventName, setNewEventName] = useState("");
+  const [newEventMode, setNewEventMode] = useState<"queue" | "playlist">(
+    "queue"
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -68,7 +73,7 @@ export default function Dashboard() {
       return;
     }
 
-    const result = await createEvent(newEventName.trim());
+    const result = await createEvent(newEventName.trim(), newEventMode);
 
     if (result.success) {
       setSuccess("Event created successfully!");
@@ -183,6 +188,36 @@ export default function Dashboard() {
                   />
                 </div>
 
+                <div className="mb-6">
+                  <label className="block text-gray-300 mb-3">Event Mode</label>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="eventMode"
+                        checked={newEventMode === "queue"}
+                        onChange={() => setNewEventMode("queue")}
+                        className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="ml-2 text-gray-300">Queue Mode</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="eventMode"
+                        checked={newEventMode === "playlist"}
+                        onChange={() => setNewEventMode("playlist")}
+                        className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="ml-2 text-gray-300">Playlist Mode</span>
+                    </label>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-400">
+                    Queue Mode: Songs go directly to Spotify queue. Playlist
+                    Mode: Songs are added to a dedicated Spotify playlist.
+                  </p>
+                </div>
+
                 <button
                   type="submit"
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition duration-200"
@@ -252,10 +287,17 @@ export default function Dashboard() {
                           <h3 className="text-lg font-semibold text-white">
                             {event.name}
                           </h3>
-                          <p className="text-gray-400 text-sm mt-1">
-                            Created:{" "}
-                            {new Date(event.created_at).toLocaleString()}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-gray-400 text-sm">
+                              Created:{" "}
+                              {new Date(event.created_at).toLocaleString()}
+                            </p>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-900 text-purple-200 border border-purple-700">
+                              {event.mode === "queue"
+                                ? "Queue Mode"
+                                : "Playlist Mode"}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-3">

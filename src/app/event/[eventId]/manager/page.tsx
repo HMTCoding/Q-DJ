@@ -17,13 +17,24 @@ interface SpotifyTrack {
   uri: string;
 }
 
+interface Event {
+  id: string;
+  name: string;
+  manager_id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  is_active: boolean;
+  mode: "queue" | "playlist";
+  spotify_playlist_id: string | null;
+}
+
 export default function ManagerView() {
   const { eventId } = useParams<{ eventId: string }>();
   const { data: session, status } = useSession();
   const [currentTrack, setCurrentTrack] = useState<SpotifyTrack | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [event, setEvent] = useState<any>(null);
+  const [event, setEvent] = useState<Event | null>(null);
   const [isCopied, setIsCopied] = useState(false);
 
   const [queue, setQueue] = useState<SpotifyTrack[]>([]);
@@ -138,20 +149,42 @@ export default function ManagerView() {
 
   // Function to fetch the current queue
   const fetchQueue = async () => {
-    if (!eventId) return;
+    if (!eventId || !event) return;
 
     setQueueLoading(true);
     setQueueError(null);
 
     try {
-      const response = await fetch(`/api/spotify/get-queue?eventId=${eventId}`);
+      let response;
+
+      if (event.mode === "playlist") {
+        // Fetch tracks from the playlist
+        response = await fetch(
+          `/api/spotify/get-playlist-tracks?eventId=${eventId}`
+        );
+      } else {
+        // Fetch tracks from the queue
+        response = await fetch(`/api/spotify/get-queue?eventId=${eventId}`);
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch queue");
+        throw new Error(
+          data.error ||
+            (event.mode === "playlist"
+              ? "Failed to fetch playlist tracks"
+              : "Failed to fetch queue")
+        );
       }
 
-      setQueue(data.queue || []);
+      // Set the queue based on the mode
+      if (event.mode === "playlist") {
+        setQueue(data.tracks || []);
+      } else {
+        setQueue(data.queue || []);
+      }
+
       // If there's a message (like 'DJ is currently offline'), set it as an error
       if (data.message) {
         setQueueError(data.message);
@@ -159,7 +192,12 @@ export default function ManagerView() {
         setQueueError(null); // Clear any previous error
       }
     } catch (err: any) {
-      setQueueError(err.message || "Error fetching queue");
+      setQueueError(
+        err.message ||
+          (event.mode === "playlist"
+            ? "Error fetching playlist tracks"
+            : "Error fetching queue")
+      );
       setQueue([]); // Clear queue on error
     } finally {
       setQueueLoading(false);
@@ -388,7 +426,9 @@ export default function ManagerView() {
         {/* Queue Section */}
         <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 backdrop-blur-sm mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-white">Queue</h2>
+            <h2 className="text-2xl font-bold text-white">
+              {event?.mode === "playlist" ? "Playlist" : "Queue"}
+            </h2>
             <div className="flex items-center space-x-2">
               {queueLoading ? (
                 <div className="flex items-center text-emerald-400 text-sm">
@@ -441,7 +481,10 @@ export default function ManagerView() {
                 </>
               ) : (
                 <>
-                  <p>No tracks in queue</p>
+                  <p>
+                    No tracks{" "}
+                    {event?.mode === "playlist" ? "in playlist" : "in queue"}
+                  </p>
                   <p className="text-sm mt-1">
                     The DJ hasn't added any tracks yet
                   </p>

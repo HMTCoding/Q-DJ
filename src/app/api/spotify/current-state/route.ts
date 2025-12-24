@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    // Fetch event data to get manager's access token
+    // Fetch event data to get manager's access token and mode
     const { data: eventData, error: eventError } = await supabase
       .from('events')
-      .select('access_token, refresh_token')
+      .select('access_token, refresh_token, mode, spotify_playlist_id')
       .eq('id', eventId)
       .single();
 
@@ -141,76 +141,240 @@ export async function GET(request: NextRequest) {
       djOfflineMessage = 'DJ is currently offline or no active device found';
     }
 
-    // Call Spotify API to get queue
-    const queueResponse = await fetch('https://api.spotify.com/v1/me/player/queue', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
     let queue = [];
     let queueError = null;
-
-    if (queueResponse.ok) {
-      const queueData = await queueResponse.json();
-      // Return only the next 2 tracks for the TV view
-      queue = (queueData.queue || []).slice(0, 2).map((track: any) => ({
-        id: track.id,
-        name: track.name,
-        artists: track.artists.map((artist: any) => ({ name: artist.name })),
-        album: {
-          images: track.album.images,
-        },
-        uri: track.uri,
-      }));
-    } else if (queueResponse.status === 401) {
-      // Token expired, try to refresh (if not already refreshed)
-      if (!djOfflineMessage) { // Only refresh if we haven't already done so
-        const newAccessToken = await refreshAndSaveSpotifyToken(eventId, eventData.refresh_token);
-        
-        if (newAccessToken) {
-          accessToken = newAccessToken;
+    
+    if (eventData.mode === 'playlist') {
+      // For playlist mode, fetch tracks from the specific playlist
+      if (!eventData.spotify_playlist_id) {
+        queueError = 'No playlist ID found for this event';
+      } else {
+        // Step A: Get the currently playing track
+        let currentlyPlayingTrackId = null;
+        try {
+          const currentlyPlayingResponse = await fetch(
+            'https://api.spotify.com/v1/me/player/currently-playing',
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            }
+          );
           
-          console.log('Successfully refreshed access token for queue');
-
-          // Retry the queue request with new token
-          const retryResponse = await fetch('https://api.spotify.com/v1/me/player/queue', {
+          if (currentlyPlayingResponse.ok) {
+            const currentlyPlayingData = await currentlyPlayingResponse.json();
+            if (currentlyPlayingData && currentlyPlayingData.item) {
+              currentlyPlayingTrackId = currentlyPlayingData.item.id;
+            }
+          } else if (currentlyPlayingResponse.status === 401) {
+            // Token expired, try to refresh
+            console.log('Access token expired, attempting to refresh token for currently playing');
+            const newAccessToken = await refreshAndSaveSpotifyToken(eventId, eventData.refresh_token);
+            
+            if (newAccessToken) {
+              accessToken = newAccessToken;
+              
+              // Retry the currently playing request with new token
+              const retryResponse = await fetch(
+                'https://api.spotify.com/v1/me/player/currently-playing',
+                {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                  },
+                }
+              );
+              
+              if (retryResponse.ok) {
+                const currentlyPlayingData = await retryResponse.json();
+                if (currentlyPlayingData && currentlyPlayingData.item) {
+                  currentlyPlayingTrackId = currentlyPlayingData.item.id;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching currently playing track:', error);
+        }
+        
+        // Get all tracks from the playlist
+        const playlistResponse = await fetch(
+          `https://api.spotify.com/v1/playlists/${eventData.spotify_playlist_id}/tracks?limit=50`, // Get more tracks to have a larger pool
+          {
             headers: {
               Authorization: `Bearer ${accessToken}`,
             },
-          });
+          }
+        );
 
-          if (retryResponse.ok) {
-            const queueData = await retryResponse.json();
-            // Return only the next 2 tracks for the TV view
-            queue = (queueData.queue || []).slice(0, 2).map((track: any) => ({
-              id: track.id,
-              name: track.name,
-              artists: track.artists.map((artist: any) => ({ name: artist.name })),
-              album: {
-                images: track.album.images,
-              },
-              uri: track.uri,
-            }));
-          } else {
-            const errorData = await retryResponse.json();
-            if (retryResponse.status === 404) {
-              djOfflineMessage = 'DJ is currently offline or no active device found';
+        if (playlistResponse.ok) {
+          const playlistData = await playlistResponse.json();
+          
+          // Step B & C: Filter tracks to show only those after the currently playing track
+          const allTracks = playlistData.items.map((item: any) => item.track).filter((track: any) => track !== null);
+          
+          if (currentlyPlayingTrackId) {
+            // Find the index of the currently playing track
+            const currentIndex = allTracks.findIndex((track: any) => track.id === currentlyPlayingTrackId);
+            
+            if (currentIndex !== -1) {
+              // Step C: Return tracks that come after the currently playing track
+              queue = allTracks.slice(currentIndex + 1, currentIndex + 3); // Next 2 tracks for TV view
             } else {
-              queueError = errorData.error?.message || 'Failed to fetch queue after token refresh';
+              // Fallback: if current track not found in playlist, return first few tracks
+              queue = allTracks.slice(0, 2);
+            }
+          } else {
+            // Fallback: if nothing is currently playing, return first few tracks
+            queue = allTracks.slice(0, 2);
+          }
+          
+          // Map the tracks to the required format
+          queue = queue.map((track: any) => ({
+            id: track.id,
+            name: track.name,
+            artists: track.artists.map((artist: any) => ({ name: artist.name })),
+            album: {
+              images: track.album.images,
+            },
+            uri: track.uri,
+          }));
+        } else if (playlistResponse.status === 401) {
+          // Token expired, try to refresh
+          if (!djOfflineMessage) { // Only refresh if we haven't already done so
+            const newAccessToken = await refreshAndSaveSpotifyToken(eventId, eventData.refresh_token);
+            
+            if (newAccessToken) {
+              accessToken = newAccessToken;
+              
+              console.log('Successfully refreshed access token for playlist tracks');
+
+              // Retry the playlist tracks request with new token
+              const retryResponse = await fetch(
+                `https://api.spotify.com/v1/playlists/${eventData.spotify_playlist_id}/tracks?limit=50`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                  },
+                }
+              );
+
+              if (retryResponse.ok) {
+                const playlistData = await retryResponse.json();
+                
+                // Step B & C: Filter tracks to show only those after the currently playing track
+                const allTracks = playlistData.items.map((item: any) => item.track).filter((track: any) => track !== null);
+                
+                let upcomingTracks = [];
+                if (currentlyPlayingTrackId) {
+                  // Find the index of the currently playing track
+                  const currentIndex = allTracks.findIndex((track: any) => track.id === currentlyPlayingTrackId);
+                  
+                  if (currentIndex !== -1) {
+                    // Step C: Return tracks that come after the currently playing track
+                    upcomingTracks = allTracks.slice(currentIndex + 1, currentIndex + 3); // Next 2 tracks for TV view
+                  } else {
+                    // Fallback: if current track not found in playlist, return first few tracks
+                    upcomingTracks = allTracks.slice(0, 2);
+                  }
+                } else {
+                  // Fallback: if nothing is currently playing, return first few tracks
+                  upcomingTracks = allTracks.slice(0, 2);
+                }
+                
+                // Map the tracks to the required format
+                queue = upcomingTracks.map((track: any) => ({
+                  id: track.id,
+                  name: track.name,
+                  artists: track.artists.map((artist: any) => ({ name: artist.name })),
+                  album: {
+                    images: track.album.images,
+                  },
+                  uri: track.uri,
+                }));
+              } else {
+                const errorData = await retryResponse.json();
+                queueError = errorData.error?.message || 'Failed to fetch playlist tracks after token refresh';
+              }
+            } else {
+              // Token refresh failed
+              console.error('Token refresh failed for event ID:', eventId);
+              queueError = 'Failed to refresh access token for playlist tracks';
             }
           }
         } else {
-          // Token refresh failed
-          console.error('Token refresh failed for event ID:', eventId);
-          queueError = 'Failed to refresh access token for queue';
+          const errorData = await playlistResponse.json();
+          queueError = errorData.error?.message || 'Failed to fetch playlist tracks';
         }
       }
-    } else if (queueResponse.status === 404) {
-      djOfflineMessage = 'DJ is currently offline or no active device found';
     } else {
-      const errorData = await queueResponse.json();
-      queueError = errorData.error?.message || 'Failed to fetch queue';
+      // For queue mode, fetch tracks from the player queue
+      const queueResponse = await fetch('https://api.spotify.com/v1/me/player/queue', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (queueResponse.ok) {
+        const queueData = await queueResponse.json();
+        // Return only the next 2 tracks for the TV view
+        queue = (queueData.queue || []).slice(0, 2).map((track: any) => ({
+          id: track.id,
+          name: track.name,
+          artists: track.artists.map((artist: any) => ({ name: artist.name })),
+          album: {
+            images: track.album.images,
+          },
+          uri: track.uri,
+        }));
+      } else if (queueResponse.status === 401) {
+        // Token expired, try to refresh (if not already refreshed)
+        if (!djOfflineMessage) { // Only refresh if we haven't already done so
+          const newAccessToken = await refreshAndSaveSpotifyToken(eventId, eventData.refresh_token);
+          
+          if (newAccessToken) {
+            accessToken = newAccessToken;
+            
+            console.log('Successfully refreshed access token for queue');
+
+            // Retry the queue request with new token
+            const retryResponse = await fetch('https://api.spotify.com/v1/me/player/queue', {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+            });
+
+            if (retryResponse.ok) {
+              const queueData = await retryResponse.json();
+              // Return only the next 2 tracks for the TV view
+              queue = (queueData.queue || []).slice(0, 2).map((track: any) => ({
+                id: track.id,
+                name: track.name,
+                artists: track.artists.map((artist: any) => ({ name: artist.name })),
+                album: {
+                  images: track.album.images,
+                },
+                uri: track.uri,
+              }));
+            } else {
+              const errorData = await retryResponse.json();
+              if (retryResponse.status === 404) {
+                djOfflineMessage = 'DJ is currently offline or no active device found';
+              } else {
+                queueError = errorData.error?.message || 'Failed to fetch queue after token refresh';
+              }
+            }
+          } else {
+            // Token refresh failed
+            console.error('Token refresh failed for event ID:', eventId);
+            queueError = 'Failed to refresh access token for queue';
+          }
+        }
+      } else if (queueResponse.status === 404) {
+        djOfflineMessage = 'DJ is currently offline or no active device found';
+      } else {
+        const errorData = await queueResponse.json();
+        queueError = errorData.error?.message || 'Failed to fetch queue';
+      }
     }
 
     // If we have a DJ offline message, return it
@@ -221,7 +385,8 @@ export async function GET(request: NextRequest) {
         duration_ms: 0,
         is_playing: false,
         queue: [],
-        message: djOfflineMessage 
+        message: djOfflineMessage,
+        mode: eventData.mode // Include the mode in the response
       });
     }
 
@@ -233,6 +398,7 @@ export async function GET(request: NextRequest) {
       is_playing,
       queue,
       queueError: queueError || null,
+      mode: eventData.mode // Include the mode in the response
     });
   } catch (error) {
     console.error('Error fetching current state:', error);

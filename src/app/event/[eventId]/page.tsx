@@ -10,6 +10,7 @@ interface Event {
   name: string;
   manager_id: string;
   is_active: boolean;
+  mode: "queue" | "playlist";
 }
 
 interface SpotifyTrack {
@@ -174,22 +175,44 @@ export default function EventPage({
     }
   };
 
-  // Function to fetch the current queue
+  // Function to fetch the current queue or playlist tracks
   const fetchQueue = async () => {
-    if (!eventId) return;
+    if (!eventId || !event) return;
 
     setQueueLoading(true);
     setQueueError(null);
 
     try {
-      const response = await fetch(`/api/spotify/get-queue?eventId=${eventId}`);
+      let response;
+
+      if (event.mode === "playlist") {
+        // Fetch tracks from the playlist
+        response = await fetch(
+          `/api/spotify/get-playlist-tracks?eventId=${eventId}`
+        );
+      } else {
+        // Fetch tracks from the queue
+        response = await fetch(`/api/spotify/get-queue?eventId=${eventId}`);
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch queue");
+        throw new Error(
+          data.error ||
+            (event.mode === "playlist"
+              ? "Failed to fetch playlist tracks"
+              : "Failed to fetch queue")
+        );
       }
 
-      setQueue(data.queue || []);
+      // Set the queue based on the mode
+      if (event.mode === "playlist") {
+        setQueue(data.tracks || []);
+      } else {
+        setQueue(data.queue || []);
+      }
+
       // If there's a message (like 'DJ is currently offline'), set it as an error
       if (data.message) {
         setQueueError(data.message);
@@ -197,7 +220,12 @@ export default function EventPage({
         setQueueError(null); // Clear any previous error
       }
     } catch (err: any) {
-      setQueueError(err.message || "Error fetching queue");
+      setQueueError(
+        err.message ||
+          (event.mode === "playlist"
+            ? "Error fetching playlist tracks"
+            : "Error fetching queue")
+      );
       setQueue([]); // Clear queue on error
     } finally {
       setQueueLoading(false);
@@ -308,8 +336,10 @@ export default function EventPage({
                           </svg>
                           Adding...
                         </>
+                      ) : event?.mode === "playlist" ? (
+                        "Zur Playlist hinzufügen"
                       ) : (
-                        "Add to Queue"
+                        "Zur Warteschlange hinzufügen"
                       )}
                     </button>
                   </div>
@@ -328,7 +358,9 @@ export default function EventPage({
         {/* Queue Section */}
         <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 backdrop-blur-sm mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-white">Warteschlange</h2>
+            <h2 className="text-xl font-semibold text-white">
+              {event?.mode === "playlist" ? "Playlist" : "Warteschlange"}
+            </h2>
             <div className="flex items-center space-x-2">
               {queueLoading ? (
                 <div className="flex items-center text-emerald-400 text-sm">
@@ -381,7 +413,10 @@ export default function EventPage({
                 </>
               ) : (
                 <>
-                  <p>No tracks in queue</p>
+                  <p>
+                    No tracks{" "}
+                    {event?.mode === "playlist" ? "in playlist" : "in queue"}
+                  </p>
                   <p className="text-sm mt-1">
                     The DJ hasn't added any tracks yet
                   </p>

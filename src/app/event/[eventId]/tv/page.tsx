@@ -22,6 +22,7 @@ interface CurrentState {
   queue: SpotifyTrack[];
   message?: string;
   queueError?: string | null;
+  mode?: "queue" | "playlist";
 }
 
 export default function TvView() {
@@ -196,7 +197,7 @@ export default function TvView() {
         {/* Up Next Section */}
         <div className="w-full max-w-6xl">
           <h2 className="text-4xl md:text-5xl font-bold text-center mb-8 text-white">
-            UP NEXT
+            {state?.mode === "playlist" ? "PLAYLIST" : "UP NEXT"}
           </h2>
 
           {state?.queue && state.queue.length > 0 ? (
@@ -235,7 +236,9 @@ export default function TvView() {
               <p className="text-2xl text-gray-500">
                 {state?.message
                   ? "No upcoming tracks available"
-                  : "No tracks queued next"}
+                  : `No tracks ${
+                      state?.mode === "playlist" ? "in playlist" : "queued next"
+                    }`}
               </p>
             </div>
           )}
