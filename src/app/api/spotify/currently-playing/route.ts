@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    // Fetch event data to get manager's access token
+    // Fetch event data to get active host email
     const { data: eventData, error: eventError } = await supabase
       .from('events')
-      .select('access_token, refresh_token')
+      .select('active_host_email')
       .eq('id', eventId)
       .single();
 
@@ -27,8 +27,28 @@ export async function GET(request: NextRequest) {
     }
     
     console.log('Found event in Supabase for ID:', eventId);
+    
+    // Determine which user is the active host and get their tokens
+    const activeHostEmail = eventData.active_host_email;
+    
+    if (!activeHostEmail) {
+      return Response.json({ error: 'No active host set for this event' }, { status: 400 });
+    }
 
-    let accessToken = eventData.access_token;
+    // Get the active host's Spotify credentials from the database
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('access_token, refresh_token')
+      .eq('email', activeHostEmail)
+      .single();
+
+    if (userError || !userData) {
+      console.error('Error getting active host Spotify credentials:', userError);
+      return Response.json({ error: 'Active host Spotify credentials not found' }, { status: 404 });
+    }
+
+    let accessToken = userData.access_token;
+    const refreshToken = userData.refresh_token;
 
     // Log before making Spotify API call
     console.log('Making Spotify currently playing API call with access token (first 10 chars):', accessToken?.substring(0, 10));
@@ -45,8 +65,8 @@ export async function GET(request: NextRequest) {
       // If unauthorized, try to refresh the token
       if (currentlyPlayingResponse.status === 401) {
         console.log('Access token expired, attempting to refresh token');
-        // Attempt token refresh
-        const newAccessToken = await refreshAndSaveSpotifyToken(eventId, eventData.refresh_token);
+        // Attempt token refresh using active host's refresh token
+        const newAccessToken = await refreshAndSaveSpotifyToken(eventId, refreshToken);
         
         if (newAccessToken) {
           accessToken = newAccessToken;

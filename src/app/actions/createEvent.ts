@@ -3,7 +3,7 @@
 import { supabase } from "@/lib/supabase";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { refreshAndSaveSpotifyToken } from "@/lib/spotify";
+import { refreshAndSaveSpotifyToken, refreshSpotifyToken } from "@/lib/spotify";
 
 export interface Event {
   id: string;
@@ -126,8 +126,22 @@ export async function createEvent(name: string, mode: 'queue' | 'playlist' = 'qu
     let playlistId: string | null = null;
     
     // If mode is playlist, create a new Spotify playlist
-    if (mode === 'playlist' && session.accessToken) {
-      playlistId = await createSpotifyPlaylist(session.accessToken, name);
+    if (mode === 'playlist') {
+      let accessToken = session.accessToken;
+      
+      // If no access token or it's expired, try to refresh it
+      if (!accessToken && session.refreshToken) {
+        accessToken = await refreshSpotifyToken(session.refreshToken);
+      }
+      
+      if (!accessToken) {
+        return {
+          success: false,
+          error: "No valid Spotify access token available. Please re-authenticate."
+        };
+      }
+      
+      playlistId = await createSpotifyPlaylist(accessToken, name);
       
       if (!playlistId) {
         return {
@@ -137,8 +151,21 @@ export async function createEvent(name: string, mode: 'queue' | 'playlist' = 'qu
       }
     }
 
+    // First, ensure the user's Spotify credentials are stored in the users table
+    const { error: userError } = await supabase
+      .from('users')
+      .upsert({
+        email: session.user.email,
+        access_token: session.accessToken,
+        refresh_token: session.refreshToken
+      });
+    
+    if (userError) {
+      console.error('Error upserting user credentials:', userError);
+    }
+    
     // Create the new event
-    const { data, error } = await supabase
+    const { data: eventData, error: eventError } = await supabase
       .from('events')
       .insert([{ 
         name, 
@@ -147,17 +174,34 @@ export async function createEvent(name: string, mode: 'queue' | 'playlist' = 'qu
         refresh_token: session.refreshToken,
         is_active: true,
         mode,
-        spotify_playlist_id: playlistId
+        spotify_playlist_id: playlistId,
+        active_host_email: session.user.email  // Set the creator as the active host
       }])
       .select()
       .single();
-
-    if (error) {
+    
+    if (eventError) {
       return {
         success: false,
-        error: `Error creating event: ${error.message}`
+        error: `Error creating event: ${eventError.message}`
       };
     }
+    
+    // Add the event creator as a host DJ in the event_members table
+    const { error: memberError } = await supabase
+      .from('event_members')
+      .insert({
+        event_id: eventData.id,
+        user_email: session.user.email,
+        role: 'host_dj'  // Creator is the host DJ
+      });
+    
+    if (memberError) {
+      console.error('Error adding event creator to event_members:', memberError);
+      // Don't fail the event creation if we can't add the member
+    }
+    
+    const data = eventData;
 
     return {
       success: true,

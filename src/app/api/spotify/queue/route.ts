@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { refreshAndSaveSpotifyToken } from '@/lib/spotify';
+import { refreshAndSaveSpotifyToken, getSpotifyAccessToken } from '@/lib/spotify';
 
 interface Event {
   id: string;
@@ -11,6 +11,7 @@ interface Event {
   is_active: boolean;
   mode: 'queue' | 'playlist';
   spotify_playlist_id: string | null;
+  active_host_email: string | null;
 }
 
 
@@ -26,10 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the event to access the manager's tokens and mode
+    // Get the event to access the mode and active host email
     const { data: event, error: eventError } = await supabase
       .from('events')
-      .select('access_token, refresh_token, mode, spotify_playlist_id')
+      .select('mode, spotify_playlist_id, active_host_email')
       .eq('id', eventId)
       .single();
 
@@ -40,22 +41,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let accessToken = event.access_token;
+    // Determine which user is the active host and get their tokens
+    const activeHostEmail = event.active_host_email;
+    
+    if (!activeHostEmail) {
+      return Response.json(
+        { error: 'No active host set for this event' },
+        { status: 400 }
+      );
+    }
+
+    // Get the active host's Spotify credentials from the database
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('access_token, refresh_token')
+      .eq('email', activeHostEmail)
+      .single();
+
+    if (userError || !userData) {
+      console.error('Error getting active host Spotify credentials:', userError);
+      return Response.json(
+        { error: 'Active host Spotify credentials not found' },
+        { status: 404 }
+      );
+    }
+
+    let accessToken = userData.access_token;
+    const refreshToken = userData.refresh_token;
 
     // Check if access token is expired or about to expire, then refresh it
-    if (!accessToken && event.refresh_token) {
+    if (!accessToken && refreshToken) {
       // If no access token but we have a refresh token, get a new one
-      accessToken = await refreshAndSaveSpotifyToken(eventId, event.refresh_token);
+      accessToken = await getSpotifyAccessToken(activeHostEmail);
       
       if (!accessToken) {
         return Response.json(
-          { error: 'Unable to refresh access token' },
+          { error: 'Unable to refresh access token for active host' },
           { status: 401 }
         );
       }
     } else if (!accessToken) {
       return Response.json(
-        { error: 'No access token available' },
+        { error: 'No access token available for active host' },
         { status: 401 }
       );
     }
@@ -103,7 +130,7 @@ export async function POST(request: NextRequest) {
       if (response.status === 401) {
         // Token expired, try to refresh
         console.log('Access token expired, attempting to refresh token');
-        const newAccessToken = await refreshAndSaveSpotifyToken(eventId, event.refresh_token);
+        const newAccessToken = await getSpotifyAccessToken(activeHostEmail);
         
         if (newAccessToken) {
           accessToken = newAccessToken;

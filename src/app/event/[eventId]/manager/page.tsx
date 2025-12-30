@@ -26,6 +26,7 @@ interface Event {
   is_active: boolean;
   mode: "queue" | "playlist";
   spotify_playlist_id: string | null;
+  active_host_email: string | null;
 }
 
 export default function ManagerView() {
@@ -45,29 +46,205 @@ export default function ManagerView() {
     message: string;
     type: "success" | "error";
   }>({ show: false, message: "", type: "success" });
+
+  // Team management state
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [generatingInvite, setGeneratingInvite] = useState(false);
+  const [activeHostEmail, setActiveHostEmail] = useState<string | null>(null);
+  const [isMainHost, setIsMainHost] = useState(false);
   const pollingInterval = useRef<NodeJS.Timeout | null>(null);
   const queuePollingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // Check if the user is the event manager
+  // Function to load team members
+  const loadTeamMembers = async (eventId: string) => {
+    setTeamLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("event_members")
+        .select("*")
+        .eq("event_id", eventId);
+
+      if (error) {
+        console.error("Error loading team members:", error);
+      } else {
+        setTeamMembers(data || []);
+      }
+    } catch (err) {
+      console.error("Error loading team members:", err);
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  // Function to generate an invite link
+  const generateInviteLink = async () => {
+    if (!eventId) return;
+
+    setGeneratingInvite(true);
+    try {
+      const response = await fetch("/api/event/generate-invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ eventId }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setInviteLink(data.inviteLink);
+
+        // Copy to clipboard automatically
+        navigator.clipboard.writeText(data.inviteLink);
+
+        setToast({
+          show: true,
+          message: "Invite link generated and copied to clipboard!",
+          type: "success",
+        });
+
+        setTimeout(() => {
+          setToast((prev) => ({ ...prev, show: false }));
+        }, 3000);
+      } else {
+        setToast({
+          show: true,
+          message: data.error || "Failed to generate invite link",
+          type: "error",
+        });
+
+        setTimeout(() => {
+          setToast((prev) => ({ ...prev, show: false }));
+        }, 3000);
+      }
+    } catch (err) {
+      setToast({
+        show: true,
+        message: "Error generating invite link",
+        type: "error",
+      });
+
+      setTimeout(() => {
+        setToast((prev) => ({ ...prev, show: false }));
+      }, 3000);
+    } finally {
+      setGeneratingInvite(false);
+    }
+  };
+
+  // Function to change the active host
+  const changeActiveHost = async (email: string) => {
+    if (!eventId) return;
+
+    try {
+      const response = await fetch(`/api/event/${eventId}/change-host`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ newHostEmail: email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setActiveHostEmail(email);
+
+        setToast({
+          show: true,
+          message: `Active host changed to ${email}`,
+          type: "success",
+        });
+
+        setTimeout(() => {
+          setToast((prev) => ({ ...prev, show: false }));
+        }, 3000);
+      } else {
+        setToast({
+          show: true,
+          message: data.error || "Failed to change active host",
+          type: "error",
+        });
+
+        setTimeout(() => {
+          setToast((prev) => ({ ...prev, show: false }));
+        }, 3000);
+      }
+    } catch (err) {
+      setToast({
+        show: true,
+        message: "Error changing active host",
+        type: "error",
+      });
+
+      setTimeout(() => {
+        setToast((prev) => ({ ...prev, show: false }));
+      }, 3000);
+    }
+  };
+
+  // Check if the user is the event manager or a team member
   useEffect(() => {
     const checkEventAccess = async () => {
-      if (!session?.user?.id || !eventId) return;
+      if (!session?.user?.email || !eventId) return;
 
       try {
-        const { data, error } = await supabase
+        // First, check if user is the main manager
+        let { data: eventData, error: eventError } = await supabase
           .from("events")
           .select("*")
           .eq("id", eventId)
-          .eq("manager_id", session.user.id)
+          .eq("manager_id", session.user.id) // Use manager_id which contains user id
           .single();
 
-        if (error || !data) {
-          setError("You don't have access to this event");
+        if (!eventData || eventError) {
+          // If not the main manager, check if they're a team member
+          const { data: memberData, error: memberError } = await supabase
+            .from("event_members")
+            .select("role, event_id")
+            .eq("event_id", eventId)
+            .eq("user_email", session.user.email)
+            .single();
+
+          if (memberError || !memberData) {
+            setError("You don't have access to this event");
+            return;
+          }
+
+          // If they're a team member, get the event details
+          const { data: eventDetails, error: eventDetailsError } =
+            await supabase
+              .from("events")
+              .select("*")
+              .eq("id", eventId)
+              .single();
+
+          if (eventDetailsError || !eventDetails) {
+            setError("Event not found");
+            return;
+          }
+
+          setEvent(eventDetails);
+          setActiveHostEmail(eventDetails.active_host_email);
+          setIsMainHost(false); // User is not the main host
+
+          // Load team members
+          await loadTeamMembers(eventId);
         } else {
-          setEvent(data);
+          // User is the main manager
+          setEvent(eventData);
+          setActiveHostEmail(eventData.active_host_email);
+          setIsMainHost(true); // User is the main host
+
+          // Load team members
+          await loadTeamMembers(eventId);
         }
       } catch (err) {
         setError("Error checking event access");
+        console.error("Error in checkEventAccess:", err);
       }
     };
 
@@ -221,6 +398,23 @@ export default function ManagerView() {
       }
     };
   }, [event]);
+
+  // Update queue when page becomes visible (when user returns to the page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && eventId && event) {
+        fetchQueue();
+      }
+    };
+
+    // Add event listener for visibility change
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Cleanup event listener on component unmount
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [eventId, event]);
 
   // Function to skip the next track
   const skipNextTrack = async () => {
@@ -619,54 +813,150 @@ export default function ManagerView() {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Toast Notification */}
-      {toast.show && (
-        <div
-          className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white max-w-xs z-50 transition-opacity duration-300 ${
-            toast.type === "success"
-              ? "bg-green-600 border border-green-500"
-              : "bg-red-600 border border-red-500"
-          }`}
-        >
-          <div className="flex items-center">
-            {toast.type === "success" ? (
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
+        {/* Team Section */}
+        <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700 backdrop-blur-sm mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-white">Team</h2>
+            {isMainHost && (
+              <button
+                onClick={generateInviteLink}
+                disabled={generatingInvite}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  generatingInvite
+                    ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                }`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M5 13l4 4L19 7"
-                ></path>
-              </svg>
-            ) : (
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                ></path>
-              </svg>
+                {generatingInvite ? "Generating..." : "Generate Invite Link"}
+              </button>
             )}
-            <span>{toast.message}</span>
+          </div>
+
+          {isMainHost && inviteLink && (
+            <div className="mb-4 p-3 bg-green-900/30 text-green-200 rounded-lg border border-green-700">
+              <div className="flex justify-between items-center">
+                <span className="truncate mr-2">{inviteLink}</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(inviteLink)}
+                  className="ml-2 px-3 py-1 bg-green-700 hover:bg-green-600 rounded text-sm"
+                >
+                  Copy
+                </button>
+              </div>
+              <p className="text-green-400 text-sm mt-1">
+                Invite link expires in 1 hour
+              </p>
+            </div>
+          )}
+
+          {isMainHost && (
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2">Active Host</label>
+              <div className="flex items-center">
+                <select
+                  value={activeHostEmail || ""}
+                  onChange={(e) => changeActiveHost(e.target.value)}
+                  className="flex-1 p-2 rounded-lg bg-gray-700/50 border border-gray-600 text-white mr-2"
+                >
+                  {teamMembers.map((member) => (
+                    <option key={member.user_email} value={member.user_email}>
+                      {member.user_email} ({member.role}){" "}
+                      {member.user_email === activeHostEmail ? "(Active)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Team Members
+            </h3>
+            {teamLoading ? (
+              <div className="text-center py-4">
+                <p className="text-gray-400">Loading team members...</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {teamMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                      member.user_email === activeHostEmail
+                        ? "bg-emerald-900/30 border-emerald-700"
+                        : "bg-gray-700/30 border-gray-600"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-white font-medium">
+                        {member.user_email}
+                      </p>
+                      <p className="text-gray-400 text-sm">
+                        {member.role} • Joined{" "}
+                        {new Date(member.joined_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {member.user_email === activeHostEmail && (
+                      <span className="px-2 py-1 bg-emerald-700 text-emerald-200 text-xs rounded">
+                        Active Host
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      )}
-      <Footer />
+
+        {/* Toast Notification */}
+        {toast.show && (
+          <div
+            className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white max-w-xs z-50 transition-opacity duration-300 ${
+              toast.type === "success"
+                ? "bg-green-600 border border-green-500"
+                : "bg-red-600 border border-red-500"
+            }`}
+          >
+            <div className="flex items-center">
+              {toast.type === "success" ? (
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+              ) : (
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
+              )}
+              <span>{toast.message}</span>
+            </div>
+          </div>
+        )}
+        <Footer />
+      </div>
     </div>
   );
 }

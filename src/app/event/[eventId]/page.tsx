@@ -239,6 +239,23 @@ export default function EventPage({
     }
   }, [eventId]);
 
+  // Update queue when page becomes visible (when user returns to the page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && eventId && event) {
+        fetchQueue();
+      }
+    };
+
+    // Add event listener for visibility change
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Cleanup event listener on component unmount
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [eventId, event]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 font-sans p-4 md:p-8">
       <div className="max-w-4xl mx-auto">

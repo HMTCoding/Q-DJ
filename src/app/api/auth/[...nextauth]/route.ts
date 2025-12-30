@@ -82,6 +82,34 @@ export const authOptions = {
       
       return session;
     },
+    async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
+      // Store user credentials in the users table when they sign in
+      if (account && account.provider === 'spotify') {
+        const { supabase } = await import('@/lib/supabase');
+        
+        // Create or update the user record with Spotify credentials
+        const { error } = await supabase
+          .from('users')
+          .upsert({
+            id: user.id,
+            email: user.email,
+            access_token: account.access_token,
+            refresh_token: account.refresh_token,
+            provider: account.provider,
+            provider_id: account.providerAccountId,
+            name: user.name,
+            image: user.image
+          });
+          
+        if (error) {
+          console.error('Error upserting user credentials:', error);
+        } else {
+          console.log('Successfully upserted user credentials for:', user.email);
+        }
+      }
+      
+      return true; // Allow sign in
+    },
   },
   pages: {
     signIn: "/",

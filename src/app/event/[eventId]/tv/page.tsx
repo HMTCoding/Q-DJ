@@ -67,6 +67,23 @@ export default function TvView() {
     };
   }, [eventId]);
 
+  // Update state when page becomes visible (when user returns to the page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && eventId) {
+        fetchCurrentState();
+      }
+    };
+
+    // Add event listener for visibility change
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Cleanup event listener on component unmount
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [eventId]);
+
   // Calculate progress percentage
   const progressPercentage = state?.duration_ms
     ? (state.progress_ms / state.duration_ms) * 100

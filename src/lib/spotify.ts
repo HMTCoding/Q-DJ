@@ -106,3 +106,51 @@ export async function refreshAndSaveSpotifyToken(eventId: string, refreshToken: 
     return null;
   }
 }
+
+/**
+ * Gets the Spotify access token for a user, refreshing it if necessary
+ * @param userEmail The email of the user to get the access token for
+ * @returns The access token or null if not found or refresh failed
+ */
+export async function getSpotifyAccessToken(userEmail: string): Promise<string | null> {
+  try {
+    // Get the user's Spotify credentials from the users table
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('access_token, refresh_token')
+      .eq('email', userEmail)
+      .single();
+
+    if (userError || !userData) {
+      console.error('Error getting user Spotify credentials:', userError);
+      return null;
+    }
+
+    // If access token exists and is not expired, return it
+    // For now, we'll assume we need to refresh every time for simplicity
+    if (userData.refresh_token) {
+      // Refresh the token using the refresh token
+      const newAccessToken = await refreshSpotifyToken(userData.refresh_token);
+      
+      if (newAccessToken) {
+        // Update the database with the new access token
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ access_token: newAccessToken })
+          .eq('email', userEmail);
+          
+        if (updateError) {
+          console.error('Error updating access token in database:', updateError);
+        }
+        
+        return newAccessToken;
+      }
+    }
+    
+    // If no refresh token or refresh failed, return the stored access token
+    return userData.access_token;
+  } catch (error) {
+    console.error('Error getting Spotify access token:', error);
+    return null;
+  }
+}
