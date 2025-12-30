@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../auth/[...nextauth]/route';
 
-export async function POST(request: NextRequest, { params }: { params: { eventId: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   try {
     const session = await getServerSession(authOptions);
     
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, { params }: { params: { eventId
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { eventId } = params;
+    const { eventId } = await params;
     const { newHostEmail } = await request.json();
     
     if (!eventId || !newHostEmail) {
