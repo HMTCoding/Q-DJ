@@ -50,7 +50,7 @@ export default function ManagerView() {
   // Team management state
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [generatingInvite, setGeneratingInvite] = useState(false);
   const [activeHostEmail, setActiveHostEmail] = useState<string | null>(null);
   const [isMainHost, setIsMainHost] = useState(false);
@@ -95,14 +95,14 @@ export default function ManagerView() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setInviteLink(data.inviteLink);
+        setInviteCode(data.inviteCode);
 
         // Copy to clipboard automatically
-        navigator.clipboard.writeText(data.inviteLink);
+        navigator.clipboard.writeText(data.inviteCode);
 
         setToast({
           show: true,
-          message: "Invite link generated and copied to clipboard!",
+          message: "Invite code generated and copied to clipboard!",
           type: "success",
         });
 
@@ -123,7 +123,7 @@ export default function ManagerView() {
     } catch (err) {
       setToast({
         show: true,
-        message: "Error generating invite link",
+        message: "Error generating invite code",
         type: "error",
       });
 
@@ -828,24 +828,24 @@ export default function ManagerView() {
                     : "bg-emerald-600 hover:bg-emerald-700 text-white"
                 }`}
               >
-                {generatingInvite ? "Generating..." : "Generate Invite Link"}
+                {generatingInvite ? "Generating..." : "Generate Invite Code"}
               </button>
             )}
           </div>
 
-          {isMainHost && inviteLink && (
+          {isMainHost && inviteCode && (
             <div className="mb-4 p-3 bg-green-900/30 text-green-200 rounded-lg border border-green-700">
               <div className="flex justify-between items-center">
-                <span className="truncate mr-2">{inviteLink}</span>
+                <span className="truncate mr-2">{inviteCode}</span>
                 <button
-                  onClick={() => navigator.clipboard.writeText(inviteLink)}
+                  onClick={() => navigator.clipboard.writeText(inviteCode)}
                   className="ml-2 px-3 py-1 bg-green-700 hover:bg-green-600 rounded text-sm"
                 >
                   Copy
                 </button>
               </div>
               <p className="text-green-400 text-sm mt-1">
-                Invite link expires in 1 hour
+                Invite code expires in 1 hour
               </p>
             </div>
           )}

@@ -54,8 +54,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ 
       success: true, 
       inviteCode: invite.invite_code,
-      expiresAt: invite.expires_at,
-      inviteLink: `${request.nextUrl.origin}/invite/${invite.invite_code}`
+      expiresAt: invite.expires_at
     });
   } catch (error) {
     console.error('Error generating invite:', error);

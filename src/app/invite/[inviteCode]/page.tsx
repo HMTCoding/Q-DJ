@@ -39,7 +39,7 @@ export default function InvitePage() {
               id,
               name,
               mode,
-              playlist_id
+              spotify_playlist_id
             )
           `
           )
@@ -60,7 +60,7 @@ export default function InvitePage() {
         if (status === "authenticated" && session?.user?.email) {
           await joinEvent(
             data.event_id,
-            data.events.playlist_id,
+            data.events.spotify_playlist_id,
             session.user.email
           );
         }
@@ -76,7 +76,7 @@ export default function InvitePage() {
 
   const joinEvent = async (
     eventId: string,
-    playlistId: string | null,
+    spotifyPlaylistId: string | null,
     userEmail: string
   ) => {
     try {
@@ -138,8 +138,8 @@ export default function InvitePage() {
       }
 
       // If playlist mode and playlist ID exists, make the user follow the playlist
-      if (inviteData?.events?.mode === "playlist" && playlistId) {
-        await followPlaylist(playlistId);
+      if (inviteData?.events?.mode === "playlist" && spotifyPlaylistId) {
+        await followPlaylist(spotifyPlaylistId);
       }
 
       // Set the active host to the first member if none is set
@@ -177,8 +177,13 @@ export default function InvitePage() {
     }
   };
 
-  const followPlaylist = async (playlistId: string) => {
+  const followPlaylist = async (playlistId: string | null) => {
     try {
+      if (!playlistId) {
+        console.error("No playlist ID provided");
+        return;
+      }
+
       // Call our API to make the user follow the playlist
       const response = await fetch("/api/spotify/follow-playlist", {
         method: "POST",
@@ -197,8 +202,8 @@ export default function InvitePage() {
   };
 
   const handleSpotifyLogin = () => {
-    // Redirect to Spotify login
-    window.location.href = "/api/auth/signin?callbackUrl=/invite/" + inviteCode;
+    // Redirect to Spotify login with full URL to preserve the invite code
+    window.location.href = `/api/auth/signin?callbackUrl=/invite/${inviteCode}`;
   };
 
   if (loading) {
@@ -278,7 +283,7 @@ export default function InvitePage() {
                 session.user?.email &&
                 joinEvent(
                   inviteData.event_id,
-                  inviteData.events.playlist_id,
+                  inviteData.events.spotify_playlist_id,
                   session.user.email
                 )
               }

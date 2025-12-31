@@ -110,12 +110,27 @@ export const authOptions = {
       
       return true; // Allow sign in
     },
+    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
+      console.log('NextAuth redirect callback called with url:', url, 'and baseUrl:', baseUrl);
+      // Allow callback URLs that are relative to invite pages
+      if (url.startsWith('/invite/')) {
+        console.log('Redirecting to invite page:', `${baseUrl}${url}`);
+        return `${baseUrl}${url}`;
+      }
+      // Allow callback URLs that are absolute and point to invite pages
+      if (url.startsWith(`${baseUrl}/invite/`)) {
+        console.log('Redirecting to absolute invite page:', url);
+        return url;
+      }
+      // For all other cases, default to the base URL
+      console.log('Redirecting to default base URL:', baseUrl);
+      return baseUrl;
+    },
   },
   pages: {
     signIn: "/",
   },
 };
-
 
 
 const handler = NextAuth(authOptions);

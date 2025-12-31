@@ -30,6 +30,9 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [copiedEventId, setCopiedEventId] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState<string>("");
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [joinLoading, setJoinLoading] = useState<boolean>(false);
 
   // Fetch user's events
   useEffect(() => {
@@ -247,6 +250,21 @@ export default function Dashboard() {
                   Deactivate events to create new ones.
                 </p>
               </div>
+
+              {/* Join Event Section */}
+              <div className="mt-6 bg-gray-700/30 p-4 rounded-lg border border-gray-600">
+                <h3 className="text-lg font-semibold text-white mb-3">
+                  Join Event via Invite Code
+                </h3>
+                <JoinEventForm
+                  inviteCode={inviteCode}
+                  setInviteCode={setInviteCode}
+                  joinError={joinError}
+                  setJoinError={setJoinError}
+                  joinLoading={joinLoading}
+                  setJoinLoading={setJoinLoading}
+                />
+              </div>
             </div>
           </div>
 
@@ -369,5 +387,89 @@ export default function Dashboard() {
       </div>
       <Footer />
     </div>
+  );
+}
+
+function JoinEventForm({
+  inviteCode,
+  setInviteCode,
+  joinError,
+  setJoinError,
+  joinLoading,
+  setJoinLoading,
+}: {
+  inviteCode: string;
+  setInviteCode: (code: string) => void;
+  joinError: string | null;
+  setJoinError: (error: string | null) => void;
+  joinLoading: boolean;
+  setJoinLoading: (loading: boolean) => void;
+}) {
+  const router = useRouter();
+
+  const handleJoinEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!inviteCode.trim()) {
+      setJoinError("Please enter an invite code");
+      return;
+    }
+
+    setJoinLoading(true);
+    setJoinError(null);
+
+    try {
+      // Navigate to the invite page which will handle the validation
+      router.push(`/invite/${inviteCode.trim()}`);
+    } catch (err) {
+      setJoinError("Failed to join event. Please try again.");
+      console.error("Error joining event:", err);
+    } finally {
+      setJoinLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleJoinEvent} className="space-y-3">
+      <div>
+        <label
+          htmlFor="inviteCode"
+          className="block text-gray-300 text-sm mb-1"
+        >
+          Invite Code
+        </label>
+        <input
+          id="inviteCode"
+          type="text"
+          value={inviteCode}
+          onChange={(e) => setInviteCode(e.target.value)}
+          placeholder="Enter invite code"
+          className="w-full p-2 rounded-lg bg-gray-600/50 border border-gray-500 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          disabled={joinLoading}
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={joinLoading}
+        className={`w-full py-2 px-4 rounded-lg transition ${
+          joinLoading
+            ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+            : "bg-emerald-600 hover:bg-emerald-700 text-white"
+        }`}
+      >
+        {joinLoading ? "Joining..." : "Join Event"}
+      </button>
+
+      {joinError && (
+        <div className="p-2 bg-red-900/50 text-red-200 rounded-lg border border-red-700 text-sm">
+          {joinError}
+        </div>
+      )}
+
+      <p className="text-gray-400 text-xs mt-2">
+        Ask your event host for the invite code
+      </p>
+    </form>
   );
 }
